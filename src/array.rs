@@ -14,33 +14,25 @@ pub struct Array<T> {
 
 impl<T: fmt::Display> fmt::Display for Array<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.dims.iter().any(|dim| dim.lower_bound != 1) {
-            for dim in &self.dims {
-                write!(
-                    fmt,
-                    "[{}:{}]",
-                    dim.lower_bound,
-                    dim.lower_bound + dim.len - 1
-                )?;
-            }
-            write!(fmt, "=")?;
-        }
-        fmt_helper(0, &self.dims, &mut self.data.iter(), fmt)
+        self.write_lower_bounds(fmt)?;
+        fmt_helper(0, &self.dims, &mut self.data.iter(), T::to_string, fmt)
     }
 }
 
-fn fmt_helper<'a, T, I>(
+fn fmt_helper<'a, T, I, F>(
     depth: usize,
     dims: &[Dimension],
     data: &mut I,
-    fmt: &mut fmt::Formatter<'_>,
+    string_gen: fn(&T) -> String,
+    fmt: &mut F,
 ) -> fmt::Result
 where
     I: Iterator<Item = &'a T>,
-    T: 'a + fmt::Display,
+    T: 'a,
+    F: fmt::Write,
 {
     if depth == dims.len() {
-        return write!(fmt, "{}", data.next().unwrap());
+        return write!(fmt, "{}", string_gen(data.next().unwrap()));
     }
 
     write!(fmt, "{{")?;
@@ -48,7 +40,7 @@ where
         if i != 0 {
             write!(fmt, ",")?;
         }
-        fmt_helper(depth + 1, dims, data, fmt)?;
+        fmt_helper(depth + 1, dims, data, string_gen, fmt)?;
     }
     write!(fmt, "}}")
 }
@@ -163,6 +155,34 @@ impl<T> Array<T> {
     /// higher-dimensional equivalent of row-major order.
     pub fn into_inner(self) -> Vec<T> {
         self.data
+    }
+
+    /// Helper function to write non-standard lower bounds.
+    fn write_lower_bounds<F>(&self, fmt: &mut F) -> fmt::Result
+    where
+        F: fmt::Write,
+    {
+        if self.dims.iter().any(|dim| dim.lower_bound != 1) {
+            for dim in &self.dims {
+                write!(
+                    fmt,
+                    "[{}:{}]",
+                    dim.lower_bound,
+                    dim.lower_bound + dim.len - 1
+                )?;
+            }
+            write!(fmt, "=")?;
+        }
+        write!(fmt, "")
+    }
+
+    /// Returns a formatted version of the array, but using any function that
+    /// can return a `String` from `&T`.
+    pub fn non_std_element_fmt(&self, string_gen: fn(&T) -> String) -> Result<String, fmt::Error> {
+        let mut f = String::new();
+        self.write_lower_bounds(&mut f)?;
+        fmt_helper(0, &self.dims, &mut self.data.iter(), string_gen, &mut f)?;
+        Ok(f)
     }
 }
 
